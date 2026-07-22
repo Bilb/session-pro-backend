@@ -1,0 +1,11 @@
+.git
+__pycache__
+*.pyc
+data
+*.log
+*.ini
+test.py
+docs
+.idea
+Dockerfile
+docker-compose.yml

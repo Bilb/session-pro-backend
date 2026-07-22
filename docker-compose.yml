@@ -1,0 +1,57 @@
+# Session Pro backend — local/self-hosted run.
+#
+#   docker compose up -d --build
+#
+# Clients reach it at http://<this-box-ip>:5000 (see the SSL/domain notes at the bottom).
+# The ./data directory on the HOST holds the SQLite DB = backend signing key + all Pro
+# subscriptions, so they survive `docker compose down` / rebuilds. ./data is git-ignored.
+
+services:
+  pro-backend:
+    build: .
+    image: session-pro-backend:local
+    container_name: session-pro-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000" # host:container. Change the host port if 5000 is taken.
+    environment:
+      # ---------------------------------------------------------------------------
+      # MODE A — DEV bypass (simplest; accepts DEV.-prefixed test payments).
+      # Uses a DETERMINISTIC signing key whose public key clients must pin:
+      #   fc947730f49eb01427a66e050733294d9e520e545c7a27125a780634e0860a27
+      # No Google/Apple credentials required.
+      # ---------------------------------------------------------------------------
+      SESH_PRO_BACKEND_DEV: "1"
+      SESH_PRO_BACKEND_DB_URL: "sqlite:////data/pro.db"
+
+      # ---------------------------------------------------------------------------
+      # MODE B — REAL Google validation (real Play purchases).
+      # Comment out MODE A's DEV flag and instead provide an .ini file: the Google
+      # settings (package_name, cloud_project_id, Pub/Sub cloud_subscription_name,
+      # cloud_app_credentials_path, subscription_product_id) are ONLY read from the
+      # [google] section of an .ini — env vars cannot set them. See google.md.
+      # Then the signing key is RANDOM and stored in the DB; read it back to pin in
+      # the client (SELECT backend_key FROM runtime, in ./data/pro.db).
+      #
+      # SESH_PRO_BACKEND_INI_PATH: "/app/config.ini"
+      # ---------------------------------------------------------------------------
+    volumes:
+      - ./data:/data # DB + signing key + subscriptions persist on the host
+      # MODE B extras:
+      # - ./config.ini:/app/config.ini:ro
+      # - ./google-service-account.json:/app/google-service-account.json:ro
+
+# -----------------------------------------------------------------------------
+# TLS / domain (optional): the app speaks plain HTTP. To terminate HTTPS with a
+# real cert, front it with a reverse proxy. Easiest is Caddy (automatic Let's
+# Encrypt) — uncomment below, point a DNS A record at this box, and set your
+# domain/email. Then clients use https://pro.example.org (no :5000).
+#
+#   caddy:
+#     image: caddy:2
+#     restart: unless-stopped
+#     ports: ["80:80", "443:443"]
+#     command: caddy reverse-proxy --from pro.example.org --to pro-backend:5000
+#     depends_on: [pro-backend]
+#     volumes:
+#       - ./caddy-data:/data
